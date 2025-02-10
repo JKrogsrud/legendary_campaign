@@ -486,7 +486,9 @@ export const Annihilation: CardSetDef = {
           imageUrl: "https://nyc3.digitaloceanspaces.com/bageltop/CardImages/Masterminds/annihilus_01.png",
           vAttack: "10+",
           abilities: [
-            { keyword: 71, text: "Mass Momentum 2" },
+            [
+              { keyword: 71, text: "Mass Momentum 2" }
+            ],
             [
               { bold: "Always Leads" },
               ": Annihilation Wave ",

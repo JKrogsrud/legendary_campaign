@@ -1,6 +1,6 @@
 import { interceptors } from 'undici-types';
 import * as AllData from './data/index';
-import { heroClassesArray } from './data/metadata';
+import { heroClassesArray, keywordsArray } from './data/metadata';
 const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database('Legendary.db');
 
@@ -31,48 +31,79 @@ const id = new idCounter();
 
 // For help looking up my new id's before everything is inserted into DB
 // id_by_type = {
-//      type : {name: id,....}
+//      type (ex: card_set) : {name: id, ... }
 // }
 class Id_Lookup {
     all_ids;
-    id_by_type;
 
     constructor() {
         this.all_ids = [];
-        this.id_by_type = {};
     };
 
+    // Insert
     insert(id, name, type) {
-        if (!this.id_by_type.hasOwnProperty(type)) {
-            Object.assign(this.id_by_type, {type: {}});
-        };
-        if (!this.id_by_type[type].hasOwnProperty(name)) {
-            Object.assign(this.id_by_type[type], {name: id});
-        };
-
+        // TODO: Double check we don't have a copy of this already
         this.all_ids.push({"id": id, "name": name, "type": type});
     };
 
+    // using the name and type retrieve the assigned id
     retrieve_id(name, type) {
-        return this.id_by_type[type][name];
-    };
+        // Loop through all_ids
+        
+        for (const num in this.all_ids) {
+            let object_to_check = this.all_ids[num];
+
+            if (object_to_check['name'] == name && object_to_check['type'] == type) {
+                return object_to_check['id'];
+            };
+        };
+
+        // If we don't find the id return -1
+        return -1;
+        };
 };
 
 // find always_leads
 // This function helps pull out the villain group that a mastermind
 // leads from the typecript as they dont have it as a property
-function extract_always_leads(ability_section) {
+// mastermindId for debugging
+function extract_always_leads(ability_section, mastermindId): string {
     // ability_section is an array
-    ability_section.forEach(function(array) {
-        array.foreEach(function(entry) {
-            if (entry.hasOwnProperty("bold") && entry["bold"] == "Always Leads") {
-                let always_leads = entry["bold"];
-                always_leads = always_leads.slice(2);
-                return always_leads;
-            };
-        });
-    });
+    let always_leads = "";
+
+    for (let i = 0; i < ability_section.length; i++) {
+        let possible_array = ability_section[i];
+
+        if (Array.isArray(possible_array)) {
+            for (let j = 0; j < possible_array.length; j++) {
+                let entry = possible_array[j];
+
+                if (entry.hasOwnProperty("bold") && entry["bold"] == "Always Leads") {
+                    always_leads = possible_array[1];
+                    always_leads = always_leads.slice(2);
+                    return always_leads;
+                }
+            }
+        }
+    }
+    // Found no always_leads, so return "None"
+    return "None";
 };
+
+// function to help loop through an entry finding all {ability: n} and adding n to a list
+function extract_abilities(to_scan, ability_storage) {
+
+    // ability_section is an array comp
+    to_scan.forEach(function(entry) {
+        // This entry could be another array
+        if (Array.isArray(entry)) {
+            return extract_abilities(entry, ability_storage);
+        } else if (entry.constructor === Object && entry.hasOwnProperty('keyword')) {
+            ability_storage.push(entry.keyword);
+        }
+    })
+
+}
 
 const id_lookup = new Id_Lookup();
 
@@ -113,8 +144,8 @@ db.serialize(() => {
     .run('CREATE TABLE IF NOT EXISTS HeroSet (\
     id INTEGER PRIMARY KEY,\
     name TEXT,\
-    team TEXT,\
     set_id INTEGER,\
+    team TEXT,\
     FOREIGN KEY (set_id)\
     REFERENCES CardSet (id));')
 
@@ -125,7 +156,7 @@ db.serialize(() => {
     // when we add the next card we will reference the id and change the 
     .run('CREATE TABLE IF NOT EXISTS HeroCard (\
     id INTEGER PRIMARY KEY,\
-    hero_set_id INTEGER,\
+    hero_id INTEGER,\
     name TEXT,\
     rule_text TEXT,\
     printed_fight TEXT,\
@@ -134,7 +165,7 @@ db.serialize(() => {
     image_url TEXT,\
     divided_id INTEGER,\
     cost TEXT,\
-    FOREIGN KEY (hero_set_id) REFERENCES HeroSet (id),\
+    FOREIGN KEY (hero_id) REFERENCES HeroSet (id),\
     FOREIGN KEY (divided_id) REFERENCES HeroSet (id));')
 
     .run('CREATE TABLE IF NOT EXISTS HeroCard_Keyword (\
@@ -143,7 +174,8 @@ db.serialize(() => {
     FOREIGN KEY (card_id)\
     REFERENCES HeroCard (id),\
     FOREIGN KEY (keyword)\
-    REFERENCES Keyword (keyword));')
+    REFERENCES Keyword (keyword),\
+    PRIMARY KEY (card_id, keyword));')
     
     .run('CREATE TABLE IF NOT EXISTS HeroCard_CardClass(\
     card_id INTEGER,\
@@ -176,7 +208,8 @@ db.serialize(() => {
     card_id INTEGER,\
     keyword TEXT,\
     FOREIGN KEY (card_id) REFERENCES VillainCard (id),\
-    FOREIGN KEY (keyword) REFERENCES Keyword (name));')
+    FOREIGN KEY (keyword) REFERENCES Keyword (name),\
+    PRIMARY KEY (card_id, keyword));')
     
     // Create tables for Masterminds
 
@@ -205,7 +238,8 @@ db.serialize(() => {
     card_id INTEGER,\
     keyword TEXT,\
     FOREIGN KEY (card_id) REFERENCES MastermindCard (id),\
-    FOREIGN KEY (keyword) REFERENCES Keyword (name));')
+    FOREIGN KEY (keyword) REFERENCES Keyword (name),\
+    PRIMARY KEY (card_id, keyword));')
 
     // Create Tables for Henchmen
 
@@ -229,7 +263,8 @@ db.serialize(() => {
     card_id INTEGER,\
     keyword TEXT,\
     FOREIGN KEY (card_id) REFERENCES HenchmenCard (id),\
-    FOREIGN KEY (keyword) REFERENCES Keyword (name));')
+    FOREIGN KEY (keyword) REFERENCES Keyword (name),\
+    PRIMARY KEY (card_id, keyword));')
 
     // Create Tables for Bystanders
 
@@ -246,7 +281,8 @@ db.serialize(() => {
     card_id INTEGER,\
     keyword TEXT,\
     FOREIGN KEY (card_id) REFERENCES BystanderCard (id),\
-    FOREIGN KEY (keyword) REFERENCES Keyword (name));')
+    FOREIGN KEY (keyword) REFERENCES Keyword (name),\
+    PRIMARY KEY (card_id, keyword));')
 
     // Create Tables for Schemes
 
@@ -264,22 +300,25 @@ db.serialize(() => {
     card_id INTEGER,\
     keyword TEXT,\
     FOREIGN KEY (card_id) REFERENCES SchemeCard (id),\
-    FOREIGN KEY (keyword) REFERENCES Keyword (name));')
+    FOREIGN KEY (keyword) REFERENCES Keyword (name),\
+    PRIMARY KEY (card_id, keyword));')
     
     .serialize(() => {
         // Here we start a new string of things because I want to access and store some data with js
         const setArray = AllData.Metadata.setsArray;
 
         for (const setNum in setArray) {
+
             let setId = id.newID();
 
             let setValue = setArray[setNum].value; // Ex: "darkcity"
             let setLabel = setArray[setNum].label; // Ex: "Dark City"
             let setInitials = setArray[setNum].initials; // Ex: "DC"
 
+            // This is using my insertion help object - currently broken
+            // console.debug('id: ', setId);
+            // console.debug('setValue:', setValue);
             id_lookup.insert(setId, setValue, "card_set");
-            //console.debug('id: ', setId);
-            //console.debug('setValue:', setLabel);
     
             // This will be for the CardSet-CardType Table
             let setCardTypes = setArray[setNum].cardTypes;
@@ -290,9 +329,8 @@ db.serialize(() => {
 
             // Add the old id and new id to a lookup table - JS
             id_conversion[setArray[setNum].id] = setId;
-    
+
             for (const cardTypeNum in setCardTypes ) {
-    
                 let cardType = setCardTypes[cardTypeNum];
                 let cardTypeValue = '';
                 switch(cardType) {
@@ -329,7 +367,7 @@ db.serialize(() => {
     .run("INSERT OR IGNORE INTO CardClass (name, color, picture) VALUES ('Instinct', 'yellow', 'temp');")
     .run("INSERT OR IGNORE INTO CardClass (name, color, picture) VALUES ('Might', 'green', 'temp');")
 
-    // More INSERTING
+    // Inserting main card data
     .serialize(() => {
         Object.keys(AllData.SetDefinitions).forEach(function(key) {
             
@@ -351,9 +389,12 @@ db.serialize(() => {
                     //console.debug('set_id: ', setId)
 
                     let heroTeam = AllData.SetDefinitions[key].heroes[i].team;
+                    // This should be a number, i want text
+                    let heroTeamName = AllData.Metadata.teamsArray[heroTeam].label;
                     //console.debug('team: ', heroTeam);
 
                     id_lookup[heroId] = heroName;
+
                     id_lookup.insert(heroId, heroName, "hero_set");
                     
                     // Looping through each heroes cards here
@@ -363,7 +404,7 @@ db.serialize(() => {
                     //console.debug('Cards: ');
 
                     // INSERT Character
-                    db.run("INSERT INTO HeroSet VALUES (?,?,?,?);", [heroId, heroName, setId, heroTeam]);
+                    db.run("INSERT INTO HeroSet VALUES (?,?,?,?);", [heroId, heroName, setId, heroTeamName]);
 
                     // dividedHeroCardId will be set as the id of any divided card we find
                     // so that we can link the heroes in the table
@@ -424,7 +465,8 @@ db.serialize(() => {
                         //console.debug('cost: ', heroCardCost);
                         
                         let dividedId = '';
-
+                        
+                        // We enter this if the last card set the variable dividedHeroCardId to anything other than 0
                         if (dividedHeroCardId != 0) {
 
                             // The last entry into HeroCards Heroes was a divided card so we
@@ -435,6 +477,9 @@ db.serialize(() => {
                             // Replace the line of dividedheroCardId with a foreign key to my
                             // my current card
                             //console.debug('card id : ', dividedId, ' attached to card id: ', heroCardId);
+                            db.run('UPDATE HeroCard\
+                                    SET divided_id = ?\
+                                    WHERE id = ?;', [heroCardId, dividedHeroCardId]);
 
                             // reset the dividedHeroCard
                             dividedHeroCardId = 0;
@@ -476,7 +521,16 @@ db.serialize(() => {
                             db.run('INSERT INTO HeroCard_CardClass VALUES (?,?);', [heroCardId,heroClass2]);
                         };
 
-                        // TODO: Parse through abilities to extract Keywords
+                        // Parse through abilities to extract Keywords
+                        let keywords = [];
+                        extract_abilities(cards[j].abilities, keywords)
+                        
+                        keywords.forEach(function(keyword_id) {
+                            // Look up the name of the keyword
+                            let keyword_name = keywordsArray[keyword_id-1].label;
+                            db.run('INSERT OR IGNORE INTO HeroCard_Keyword VALUES (?, ?);', [heroCardId, keyword_name]);
+                        });
+
                     };
                 };
             };
@@ -541,7 +595,15 @@ db.serialize(() => {
                             cardUrl
                         ]);
 
-                        // TODO: Parse through the abilities to link to VillainCard_Keyword table
+                        // Parse through the abilities to link to VillainCard_Keyword table
+                        let keywords = [];
+                        extract_abilities(villainCard.abilities, keywords);
+
+                        keywords.forEach(function(keyword_id) {
+                            // Look up the name of the keyword
+                            let keyword_name = keywordsArray[keyword_id-1].label;
+                            db.run('INSERT OR IGNORE INTO VillainCard_Keyword VALUES (?, ?);', [cardId, keyword_name]);
+                        });
                     }
                 };
             };
@@ -563,11 +625,16 @@ db.serialize(() => {
 
                     // always_leads
                     // This is tricky as this info is located on one of the mastermind cards
+
                     let abilities_section = mastermindSet.cards[0].abilities;
-                    let always_leads = extract_always_leads(abilities_section);
+
+                    let always_leads = "";
+                    always_leads = extract_always_leads(abilities_section, mastermindName);
 
                     // Now we get the id of the villain set it leads
                     let always_leads_id = id_lookup.retrieve_id(always_leads, "villain_set");
+
+                    // Possible that this gives a -1 result
 
                     db.run("INSERT INTO MastermindSet VALUES (?,?,?,?);", [
                         mastermindId,
