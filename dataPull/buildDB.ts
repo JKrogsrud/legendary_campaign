@@ -252,7 +252,6 @@ db.serialize(() => {
     .run('CREATE TABLE IF NOT EXISTS HenchmenCard (\
     id INTEGER PRIMARY KEY,\
     henchmen_set INTEGER,\
-    qty INTEGER,\
     vp INTEGER,\
     rules_text TEXT,\
     fight_strength INTEGER,\
@@ -643,27 +642,197 @@ db.serialize(() => {
                         always_leads_id
                     ])
 
+                    // Loop through mastermind cards
+                    // they will either be a mastermind, epic mastermind, transformed mastermind, or tactic
+                    for (let j = 0; j < mastermindSet.cards.length; j++) {
+                        let mastermindCard = mastermindSet.cards[j];
+
+                        let cardId = id.newID();
+
+                        let cardName = mastermindCard.name;
+
+                        id_lookup.insert(cardId, cardName, "mastermind_card");
+
+                        let cardEpic = 0;
+                        if (mastermindCard.hasOwnProperty('epic')) {
+                            let cardEpic = mastermindCard.epic;
+                        }
+
+                        let cardTransformed = 0;
+                        if (mastermindCard.hasOwnProperty('transformed')) {
+                            let cardTransformed = mastermindCard.transformed;
+                        }
+
+                        let cardTactic = 0;
+                        if (mastermindCard.hasOwnProperty('tactic')) {
+                            let cardTactic = mastermindCard.tactic;
+                        }
+
+                        let cardAttack = mastermindCard.vAttack;
+
+                        let cardRules = mastermindCard.abilities.toString();
+
+                        let cardUrl = mastermindCard.imageUrl;
+
+                        let cardVp = mastermindCard.vp;
+                        
+                        db.run('INSERT INTO MastermindCard VALUES (?,?,?,?,?,?,?,?,?,?);', [
+                            cardId,
+                            cardName,
+                            mastermindId,
+                            cardEpic,
+                            cardTransformed,
+                            cardTactic,
+                            cardAttack,
+                            cardRules,
+                            cardUrl,
+                            cardVp
+                        ]);
+
+                        // next we need to parse through the abilities to link to the MastermindCard_Keyword table
+                        let keywords = [];
+                        extract_abilities(mastermindCard.abilities, keywords);
+
+                        keywords.forEach(function(keyword_id) {
+                            // Look up the name of the keyword
+                            let keyword_name = keywordsArray[keyword_id-1].label;
+                            db.run('INSERT OR IGNORE INTO MastermindCard_Keyword VALUES (?, ?);', [cardId, keyword_name]);
+                        });
+                    };
                 };
             };
 
             // Schemes
             if (AllData.SetDefinitions[key].hasOwnProperty('schemes')) {
                 for (let i = 0; i < AllData.SetDefinitions[key].schemes.length; i++) {
-                    // stuff
+                    
+                    let scheme = AllData.SetDefinitions[key].schemes[i];
+                    let schemeName = scheme.name;
+
+                    let schemeId = id.newID();
+                    id_lookup.insert(schemeId, schemeName, "scheme");
+
+                    let schemeImageUrl = scheme.imageUrl;
+
+                    let schemeVeiled = 0;
+                    if (scheme.hasOwnProperty('veiled')) {
+                        schemeVeiled = 1;
+                    };
+
+                    let schemeUnveiled = 0;
+                    if (scheme.hasOwnProperty('unveiled')) {
+                        schemeUnveiled = 1;
+                    };
+
+                    db.run('INSERT INTO SchemeCard VALUES (?,?,?,?,?,?,?);', [
+                        schemeId,
+                        setId,
+                        schemeName,
+                        schemeImageUrl,
+                        scheme.cards[0].abilities.toString(),
+                        schemeVeiled,
+                        schemeUnveiled
+                    ]);
+
+                    // Parse through the abilities to link to the SchemeCard_Keyword table
+                    let keywords = [];
+                    extract_abilities(scheme.cards[0].abilities, keywords);
+
+                    keywords.forEach(function(keyword_id) {
+                        // Look up the name of the keyword
+                        let keyword_name = keywordsArray[keyword_id-1].label;
+                        db.run('INSERT OR IGNORE INTO SchemeCard_Keyword VALUES (?, ?);', [schemeId, keyword_name]);
+                    });
                 };
             };
 
             // Henchmen
             if (AllData.SetDefinitions[key].hasOwnProperty('henchmen')) {
                 for (let i = 0; i < AllData.SetDefinitions[key].henchmen.length; i++) {
-                    // stuff
+
+                    let henchmenSet = AllData.SetDefinitions[key].henchmen[i];
+                    let henchmenSetId = id.newID();
+                    let henchmenSetName = henchmenSet.name;
+
+                    id_lookup.insert(henchmenSetId, henchmenSetName, "henchmen_set");
+
+                    db.run('INSERT INTO HenchmenSet VALUES (?,?,?);', [henchmenSetId, henchmenSetName, setId]);
+
+                    let henchmenCards = henchmenSet.cards;
+                    for (let j = 0; j < henchmenCards.length; j++) {
+                        let henchmenCard = henchmenCards[j];
+
+                        let cardId = id.newID();
+
+                        let cardName = henchmenCard.name;
+
+                        id_lookup.insert(cardId, cardName, "henchmen_card");
+
+                        let cardQtd = henchmenCard.qtd;
+
+                        let cardVp = henchmenCard.vp;
+
+                        let cardRules = henchmenCard.abilities.toString();
+
+                        let cardAttack = henchmenCard.vAttack;
+
+                        let cardUrl = henchmenCard.imageUrl;
+
+                        db.run('INSERT INTO HenchmenCard VALUES (?,?,?,?,?,?);', [
+                            cardId,
+                            henchmenSetId,
+                            cardVp,
+                            cardRules,
+                            cardAttack,
+                            cardUrl
+                        ]);
+
+                        // Parse through the abilities to link to the HenchmenCard_Keyword table
+                        let keywords = [];
+                        extract_abilities(henchmenCard.abilities, keywords);
+
+                        keywords.forEach(function(keyword_id) {
+                            // Look up the name of the keyword
+                            let keyword_name = keywordsArray[keyword_id-1].label;
+                            db.run('INSERT OR IGNORE INTO HenchmenCard_Keyword VALUES (?, ?);', [cardId, keyword_name]);
+                        });
+                    }
+
                 };
             };
 
             // Bystanders
-            if (AllData.SetDefinitions[key].hasOwnProperty('villains')) {
-                for (let i = 0; i < AllData.SetDefinitions[key].villains.length; i++) {
-                    // stuff
+            if (AllData.SetDefinitions[key].hasOwnProperty('bystanders')) {
+                for (let i = 0; i < AllData.SetDefinitions[key].bystanders.length; i++) {
+
+                    let bystander = AllData.SetDefinitions[key].bystanders[i];
+                    let bystanderId = id.newID();
+                    let bystanderName = bystander.name;
+
+                    id_lookup.insert(bystanderId, bystanderName, "bystander");
+
+                    let bystanderCard = bystander.cards[0];
+
+                    let bystanderCardQtd = bystanderCard.qtd;
+
+                    let bystanderHero = 0;
+                    if (bystanderCard.hasOwnProperty('hero')) {
+                        bystanderHero = 1;
+                    }
+
+                    let bystanderRules = bystanderCard.abilities.toString();
+
+                    let bystanderImageUrl = bystanderCard.imageUrl;
+
+                    db.run('INSERT INTO BystanderCard VALUES (?,?,?,?,?,?);', [
+                        bystanderId,
+                        bystanderName,
+                        setId,
+                        bystanderCardQtd,
+                        bystanderHero,
+                        bystanderRules,
+                        bystanderImageUrl
+                    ]);
                 };
             };
 
